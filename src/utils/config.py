@@ -1,0 +1,2 @@
+# CLIP Model Config
+LATENT_DIMENSIONS = 512
