@@ -131,3 +131,6 @@ dmypy.json
 # image files
 data/images
 data/input
+
+# Extra
+index/*
