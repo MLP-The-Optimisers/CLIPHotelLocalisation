@@ -128,5 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# image files
+data/images
+data/input
+
 # Extra
 index/*

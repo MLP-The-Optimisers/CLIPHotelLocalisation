@@ -47,7 +47,7 @@ def download_and_resize(imList):
             print('Bad: ' + savePath)
 
 def download_and_resize_into_same_dir(imList):
-    for im in imList:
+    for im in islice(imList, 10, 20):
         try:
             saveDir = os.path.join('./images/train/')
             if not os.path.exists(saveDir):
