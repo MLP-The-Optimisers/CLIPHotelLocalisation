@@ -134,3 +134,7 @@ data/input
 
 # Extra
 index/*
+data/input/*.csv
+data/input/dataset/*
+data/images
+

@@ -85,7 +85,7 @@ def main():
     train_headers = next(train_reader,None)
 
     images = []
-    for im in train_reader:
+    for im in islice(train_reader, 0, 1000):
         im_id = im[0]
         im_url = im[2]
         im_source = im[3]
