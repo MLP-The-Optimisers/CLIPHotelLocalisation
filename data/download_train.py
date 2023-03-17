@@ -4,7 +4,7 @@ import numpy as np
 import urllib
 import urllib.request
 from itertools import islice
-import random
+import sys
 
 # the SSL certificates for hotels50K are expired now. proceed with caution!
 import ssl
@@ -47,14 +47,10 @@ def download_and_resize(imList):
         except:
             print('Bad: ' + savePath)
 
-def download_and_resize_into_same_dir(a):
-    imList, train = a
+def download_and_resize_into_same_dir(imList):
     for im in imList:
         try:
-            if train:
-                saveDir = os.path.join('./images/train/')
-            else:
-                saveDir = os.path.join("./images/test/")
+            saveDir = os.path.join('./images/train/')
             if not os.path.exists(saveDir):
                 os.makedirs(saveDir)
 
@@ -77,7 +73,7 @@ def download_and_resize_into_same_dir(a):
         except:
             print('Bad: ' + savePath)
 
-def main():
+def main(start, end):
     hotel_f = open('./input/dataset/hotel_info.csv','r')
     hotel_reader = csv.reader(hotel_f)
     hotel_headers = next(hotel_reader,None)
@@ -90,7 +86,7 @@ def main():
     train_headers = next(train_reader,None)
 
     images = []
-    for im in train_reader:
+    for im in islice(train_reader, start, end):
         im_id = im[0]
         im_url = im[2]
         im_source = im[3]
@@ -98,19 +94,16 @@ def main():
         chain = hotel_to_chain[hotel]
         images.append((chain,hotel,im_source,im_id,im_url))
 
-    images_shuffled = random.shuffle(images)
     pool = multiprocessing.Pool()
     NUM_THREADS = multiprocessing.cpu_count()
 
     imDict = {}
     for cpu in range(NUM_THREADS):
-        pool.apply_async(download_and_resize_into_same_dir,([images_shuffled[0:int(len(images_shuffled)*0.8)][cpu::NUM_THREADS]], True))
-    pool.close()
-    pool.join()
-    for cpu in range(NUM_THREADS):
-        pool.apply_async(download_and_resize_into_same_dir,([images_shuffled[int(len(images_shuffled)*0.8):][cpu::NUM_THREADS]], False))
+        pool.apply_async(download_and_resize_into_same_dir,[images[cpu::NUM_THREADS]])
     pool.close()
     pool.join()
 
 if __name__ == '__main__':
-    retcode = main()
+    start, end = sys.argv[1:3]
+    # print(start, end)
+    retcode = main(int(start), int(end))
