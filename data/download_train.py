@@ -4,6 +4,7 @@ import numpy as np
 import urllib
 import urllib.request
 from itertools import islice
+import random
 
 # the SSL certificates for hotels50K are expired now. proceed with caution!
 import ssl
@@ -46,10 +47,14 @@ def download_and_resize(imList):
         except:
             print('Bad: ' + savePath)
 
-def download_and_resize_into_same_dir(imList):
-    for im in islice(imList, 10, 20):
+def download_and_resize_into_same_dir(a):
+    imList, train = a
+    for im in imList:
         try:
-            saveDir = os.path.join('./images/train/')
+            if train:
+                saveDir = os.path.join('./images/train/')
+            else:
+                saveDir = os.path.join("./images/test/")
             if not os.path.exists(saveDir):
                 os.makedirs(saveDir)
 
@@ -85,7 +90,7 @@ def main():
     train_headers = next(train_reader,None)
 
     images = []
-    for im in islice(train_reader, 0, 1000):
+    for im in train_reader:
         im_id = im[0]
         im_url = im[2]
         im_source = im[3]
@@ -93,12 +98,17 @@ def main():
         chain = hotel_to_chain[hotel]
         images.append((chain,hotel,im_source,im_id,im_url))
 
+    images_shuffled = random.shuffle(images)
     pool = multiprocessing.Pool()
     NUM_THREADS = multiprocessing.cpu_count()
 
     imDict = {}
     for cpu in range(NUM_THREADS):
-        pool.apply_async(download_and_resize_into_same_dir,[images[cpu::NUM_THREADS]])
+        pool.apply_async(download_and_resize_into_same_dir,([images_shuffled[0:int(len(images_shuffled)*0.8)][cpu::NUM_THREADS]], True))
+    pool.close()
+    pool.join()
+    for cpu in range(NUM_THREADS):
+        pool.apply_async(download_and_resize_into_same_dir,([images_shuffled[int(len(images_shuffled)*0.8):][cpu::NUM_THREADS]], False))
     pool.close()
     pool.join()
 
