@@ -137,4 +137,6 @@ index/*
 data/input/*.csv
 data/input/dataset/*
 data/images
-
+data/serve_images
+data/images-test
+wandb
