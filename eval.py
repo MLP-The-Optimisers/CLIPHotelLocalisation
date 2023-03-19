@@ -6,6 +6,8 @@ from rich import print
 import pandas as pd
 from typing import List
 from torch import Tensor
+import torch
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Local imports
 from src.clip_index import CLIPIndex
@@ -19,6 +21,7 @@ class Eval():
         self.index.load(index_name)
 
         self.model = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch32")
+        self.model.to(device)
         self.processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
         self.df_train = pd.read_csv("data/input/dataset/train_set.csv")
@@ -37,7 +40,9 @@ class Eval():
         image = Image.open(image_path)
 
         inputs = self.processor(images=image, return_tensors="pt")
-        outputs = self.model(**inputs)
+        with torch.no_grad():
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            outputs = self.model(**inputs)
 
         return outputs.image_embeds
 
