@@ -232,8 +232,8 @@ if __name__ == "__main__":
         # Load and split dataset
         images, labels = load_dataset_pairs()
         images_train, images_val, labels_train, labels_val = train_test_split(
-            images[0:10], 
-            labels[0:10], 
+            images, 
+            labels, 
             test_size=0.20, 
             random_state=42
         )
