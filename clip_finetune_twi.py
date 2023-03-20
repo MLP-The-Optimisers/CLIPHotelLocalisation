@@ -39,8 +39,10 @@ def save_object(obj: any, repo: str, file: str):
 def load_object(repo: str, file: str):
     # Path constant to save the object
     PATH = f'{repo}/{file}.pkl'
+    print("loading this pickle file: ", PATH)
 
     with open(PATH, 'rb') as f:
+        print("opened pickle file will now load")
         return pickle.load(f)
 
 # Define the dataset class for loading image-text pairs
@@ -169,13 +171,16 @@ parse_img_id = lambda x: int(x.split('.')[0].split('/')[-1:][0])
 
 # Build dataset split with chain labels
 images = glob.glob("data/images/*/*.jpg")
+print("read images: in format ", images[0])
 labels = []
 clean_images = []
 
 try:
     labels = load_object('.', 'labels')
     clean_images = load_object('.', 'images')
+    print("successfully loaded clean images in format: ", clean_images[0])
 except:
+    print("could not load objects so have to prepare the dataset now")
     for path in track(images, description="Preparing dataset..."):
         clean_images.append(path)
         # try:
