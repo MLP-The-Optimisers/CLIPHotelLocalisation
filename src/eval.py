@@ -15,7 +15,6 @@ from src.clip_index import CLIPIndex
 
 class Eval():
 
-
     def __init__(self, index_name: str):
         self.index = CLIPIndex()
         self.index.load(index_name)

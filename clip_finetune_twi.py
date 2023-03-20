@@ -1,109 +1,99 @@
+# External imports
 import torch
+import os
 import torch.nn.functional as F
 from transformers import CLIPProcessor, CLIPModel
-from torch.utils.data import DataLoader, Dataset
-from PIL import Image
+from torch.utils.data import DataLoader
 import glob
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from dataclasses import dataclass
 from rich.progress import track
 from rich import print
-import pickle
+from rich.console import Console
 import wandb
+
+# Local imports
+from src.utils.pickle_handler import save_object, load_object
+from src.utils.train_argparser import build_arg_parser
+from src.datasets import ImageTextDataset
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.cuda.empty_cache()
 
+# Constants
+PICKLE_REPO = './saved/pickles'
+MODEL_REPO = './saved/models'
+INDEX_REPO = './saved/index'
 
-run = wandb.init(
-    # set the wandb project where this run will be logged
-    project="MLP",
+# Dataclass defining the experiment hparams
+@dataclass
+class ExperimentConfig:
+    epochs: int
+    batch_size: int
+    lr: float
+
+
+# Method for ensureing that folders for outputs are there
+def build_expected_folders():
+    if not os.path.isdir(os.path.abspath(PICKLE_REPO)):
+        os.makedirs(os.path.abspath(PICKLE_REPO))
     
-    # track hyperparameters and run metadata
-    config={
-        "learning_rate": 5e-5,
-        "architecture": "CNN",
-        "dataset": "LocalTest-600K-660K",
-        "epochs": 10,
-        "batch_size": 64
-    }
-)
+    if not os.path.isdir(os.path.abspath(MODEL_REPO)):
+        os.makedirs(os.path.abspath(MODEL_REPO))
 
-def save_object(obj: any, repo: str, file: str):
-    # Path constant to save the object
-    PATH = f'{repo}/{file}.pkl'
+    if not os.path.isdir(os.path.abspath(INDEX_REPO)):
+        os.makedirs(os.path.abspath(INDEX_REPO))
 
-    # Save as a pickle file
-    with open(PATH, 'wb') as f:
-        pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
-def load_object(repo: str, file: str):
-    # Path constant to save the object
-    PATH = f'{repo}/{file}.pkl'
-    print("loading this pickle file: ", PATH)
+#===========================================================================
+#                     TRAIN AND VALIDATION PROCEDURES
+#===========================================================================
 
-    with open(PATH, 'rb') as f:
-        print("opened pickle file will now load")
-        return pickle.load(f)
+def fn_train(
+        epoch: int,
+        model: CLIPModel,
+        optimizer: any,
+        train_loader: DataLoader
+):
+    
+    train_total, train_loss = 0, 0
 
-# Define the dataset class for loading image-text pairs
-class ImageTextDataset(Dataset):
-    def __init__(self, image_paths, texts, processor):
-        self.image_paths = image_paths
-        self.texts = texts
-        self.processor = processor
+    for batch in train_loader:
+        optimizer.zero_grad()
+        train_total += 1 
+        # Unpack the inputs and labels from the data loader
+        pixel_values, input_ids, attention_mask = batch
 
-    def __getitem__(self, index):
-        image_path = self.image_paths[index]
-        text = self.texts[index]
+        # Forward pass
+        outputs = model(
+            input_ids=input_ids, 
+            attention_mask=attention_mask, 
+            pixel_values=pixel_values, 
+            return_loss=True)
+        
+        loss = outputs.loss
+        train_loss += loss
 
-        # Load the image and convert to a tensor
-        image = Image.open(image_path).convert("RGB")
-        pixel_values = self.processor(images=image, return_tensors="pt")['pixel_values']
-        pixel_values = pixel_values.squeeze(0)
+        loss.backward()
+        optimizer.step()
+    
+    mean_batch_loss = train_loss / train_total
+    wandb.log({"train": {"loss": mean_batch_loss}, "epoch": epoch})
 
-        # Convert the text to a tensor
-        max_length = self.processor.tokenizer.model_max_length
-        text_tokens = self.processor.tokenizer(
-            text,
-            padding="max_length",
-            truncation=True,
-            max_length=max_length,
-            return_tensors="pt",
-        )
-        input_ids = text_tokens["input_ids"].squeeze(0)
-        attention_mask = text_tokens["attention_mask"].squeeze(0)
-        pixel_values = pixel_values.to(device)
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
 
-        return (pixel_values, input_ids, attention_mask)
+def fn_val(
+        model: CLIPModel,
+        val_loader: DataLoader
+):
 
-    def __len__(self):
-        return len(self.image_paths)
+    val_total, val_loss = 0, 0
 
-# Define the training function
-def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor):
-    # Create the optimizer and scheduler
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-
-    # Define the loss function
-    def compute_loss(logits, labels):
-        return F.cross_entropy(logits, labels)
-
-    # Create the data loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size)
-
-    # Train the model
-    for epoch in range(epochs):
-        model.train()
-        for i, batch in enumerate(train_loader):
-            optimizer.zero_grad()
-
+    with torch.no_grad():
+        for batch in val_loader:
+            val_total += 1
             # Unpack the inputs and labels from the data loader
             pixel_values, input_ids, attention_mask = batch
-            labels = torch.arange(len(images)).long().to(device)
 
             # Forward pass
             outputs = model(
@@ -113,98 +103,162 @@ def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
                 return_loss=True)
             
             loss = outputs.loss
-            wandb.log({"loss": loss, "it": i + epoch})
-            loss.backward()
-            optimizer.step()
-        wandb.log({"epoch": epoch})
+            val_loss += loss
+    
+    mean_val_loss = val_loss / val_total
+    wandb.log({"val": {"loss": mean_val_loss}})
+    
+
+# Define the training function
+def train_clip(
+        experiment_config: ExperimentConfig,
+        train_dataset: DataLoader,
+        val_dataset: DataLoader,
+        model: CLIPModel
+):
+    
+    # Create the optimizer and scheduler
+    optimizer = torch.optim.AdamW(model.parameters(), lr=experiment_config.lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, 
+        T_max=experiment_config.epochs)
+
+    # Create the data loaders
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=experiment_config.batch_size, 
+        shuffle=True)
+    
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=experiment_config.batch_size,
+        shuffle=True)
+
+    # Train and validate the model
+    for epoch in range(experiment_config.epochs):
+
+        # Train over each batch and report to WandB
+        model.train() # Sets model into train mode, thus enable grads
+        fn_train(epoch, model, optimizer, train_loader)
 
         # Evaluate the model on the validation set
-        model.eval()
-        total_correct = 0
-        total_samples = 0
-        with torch.no_grad():
-            for batch in val_loader:
-                # Unpack the inputs and labels from the data loader
-                pixel_values, input_ids, attention_mask = batch
-
-                # Forward pass
-                outputs = model(
-                    input_ids=input_ids, 
-                    attention_mask=attention_mask, 
-                    pixel_values=pixel_values)
-                logits_per_image, logits_per_text = outputs.logits_per_image, outputs.logits_per_text
-                logits = torch.cat([logits_per_image, logits_per_text])
-
-                # Compute the accuracy
-                predicted_labels = logits.argmax(dim=1)
-                print(predicted_labels)
-                total_correct += (predicted_labels == labels).sum().item()
-                total_samples += len(labels)
-                accuracy = total_correct / total_samples
-
-                wandb.log({
-                    "val": {
-                        "acc": accuracy,
-                        "epoch": epoch + 1/epochs
-                    }
-                })
-
-                print(f"Epoch {epoch + 1}/{epochs}: validation accuracy = {accuracy}")
+        model.eval() # Sets model into val mode, thus no grads
+        fn_val(model, val_loader)
 
         torch.cuda.empty_cache()
+
         # Update the learning rate scheduler
         scheduler.step()
 
     return model
 
 
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-model = model.to(device)
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+#===========================================================================
+#                            DATASET LOADING
+#===========================================================================
 
-# Load dataset DataFrames from Hotels50K
-df_train = pd.read_csv("data/input/dataset/train_set.csv")
-df_hotels = pd.read_csv("data/input/dataset/hotel_info.csv")
-df_chains = pd.read_csv("data/input/dataset/chain_info.csv")
+def parse_img_id(path: str):
+    return int(path.split('.')[0].split('/')[-1:][0])
 
-parse_img_id = lambda x: int(x.split('.')[0].split('/')[-1:][0])
 
-# Build dataset split with chain labels
-images = glob.glob("data/images/*/*.jpg")
-print("read images: in format ", images[0])
-labels = []
-try:
-    labels = load_object('.', 'labels')
-    images = load_object('.', 'images')
-except:
-    for path in track(images, description="Preparing dataset..."):
-        img_id = parse_img_id(path)
+def load_dataset_pairs():
 
-        hotel_id = df_train.loc[df_train['image_id'] == img_id]['hotel_id'].iloc[0]
-        chain_id = df_hotels.loc[df_hotels['hotel_id'] == hotel_id]['chain_id'].iloc[0]
-        chain_name = df_chains.loc[df_chains['chain_id'] == chain_id]['chain_name'].iloc[0]
+    images_pickle_exists = os.path.exists(f'{PICKLE_REPO}/images.pkl')
+    labels_pickle_exists = os.path.exists(f'{PICKLE_REPO}/labels.pkl')
 
-        labels.append(chain_name)
+    # If the pickles exist the load into memory and use those instead
+    if images_pickle_exists and labels_pickle_exists:
+        labels = load_object(PICKLE_REPO, 'labels')
+        images = load_object(PICKLE_REPO, 'images')
+    else:
+        df_train = pd.read_csv("data/input/dataset/train_set.csv")
+        df_hotels = pd.read_csv("data/input/dataset/hotel_info.csv")
+        df_chains = pd.read_csv("data/input/dataset/chain_info.csv")
 
-    # Cache as Pickle files to be loaded for another run
-    save_object(images, '.', 'images')
-    save_object(labels, '.', 'labels')
+        images = glob.glob("data/images/*/*.jpg")
+        labels = []
 
-# Split dataset
-images_train, images_val, labels_train, labels_val = train_test_split(images, labels, test_size=0.20, random_state=42)
-print(len(images_train))
-print(images_train[0])
-train_dataset = ImageTextDataset(images_train, labels_train, processor)
-val_dataset = ImageTextDataset(images_val, labels_val, processor)
+        for path in track(images, description="Preparing dataset..."):
+            img_id = parse_img_id(path)
 
-# Start training
-epochs = 10
-batch_size = 256
+            hotel_id = df_train.loc[df_train['image_id'] == img_id]['hotel_id'].iloc[0]
+            chain_id = df_hotels.loc[df_hotels['hotel_id'] == hotel_id]['chain_id'].iloc[0]
+            chain_name = df_chains.loc[df_chains['chain_id'] == chain_id]['chain_name'].iloc[0]
 
-model = train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
-torch.save(model.state_dict(), f'saved_models_e{epochs}_bz{batch_size}_lr{5e-5}/model.pth')
-artifact = wandb.Artifact('model', type='model')
-artifact.add_file(f'saved_models_e{epochs}_bz{batch_size}_lr{5e-5}/model.pth')
-run.log_artifact(artifact)
+            labels.append(chain_name)
 
-wandb.finish()
+        # Cache as Pickle files to be loaded for another run
+        save_object(images, PICKLE_REPO, 'images')
+        save_object(labels, PICKLE_REPO, 'labels')
+    
+    return (images, labels)
+
+
+#===========================================================================
+#                            MAIN CONTROL
+#===========================================================================
+
+if __name__ == "__main__":
+
+    build_expected_folders()
+    console = Console()
+
+    with  console.status("Loading dataset...") as status:
+        status.update(status=f'Parsing experiment setup...')
+
+        # Parse arguments and build experiment configuration
+        arg_parser = build_arg_parser()
+        args = arg_parser.parse_args()
+
+        experiment_config = ExperimentConfig(
+            int(args.epochs), 
+            int(args.batch_size), 
+            float(args.lr)
+        )
+
+        console.log("Experiment parsed successfully!")
+        console.log(experiment_config.__dict__)
+
+        #========================= LOAD DATA & MODEL ============================
+        status.update(status=f'Loading and splitting dataset...')
+
+        # Setup WandB
+        run = wandb.init( project="MLP", config=experiment_config.__dict__)
+
+        # Load pretrained CLIP model for finetuning
+        model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
+        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+        # Load and split dataset
+        images, labels = load_dataset_pairs()
+        images_train, images_val, labels_train, labels_val = train_test_split(
+            images[0:10], 
+            labels[0:10], 
+            test_size=0.20, 
+            random_state=42
+        )
+
+        console.log("Dataset loaded and split successfully!")
+        status.update(status=f'Creating dataset loading classes..')
+
+        #======================== TRAIN AND VALIDATE ===========================
+        # Build dataset loaders, such that not all images are loaded in mem at once
+        train_dataset = ImageTextDataset(images_train, labels_train, processor, device)
+        val_dataset = ImageTextDataset(images_val, labels_val, processor, device)
+
+        console.log("Dataset loaders created successfully!")
+        status.update(status=f'Training and validating CLIP..')
+
+        # Train and validate model
+        model = train_clip(experiment_config, train_dataset, val_dataset, model)
+
+        console.log("Trained successfully!")
+
+        #============================= FINALISE ================================
+        model_name = f'clip_epochs{args.epochs}_bz{args.batch_size}_lr{args.batch_size}'
+        status.update(status=f'Saving trained model into {MODEL_REPO}/{model_name}..')
+
+        # Save model parameters
+        model.save_pretrained(f'{MODEL_REPO}/{model_name}')
+
+        wandb.finish()

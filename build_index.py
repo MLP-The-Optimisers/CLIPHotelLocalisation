@@ -18,7 +18,6 @@ index = CLIPIndex()
 index.create_index("clip_index")
 
 image_paths = glob.glob('data/images/train/*.jpg', recursive=True)
-print(device)
 
 for image_path in track(image_paths, description="Processing..."):
     image_id = int(image_path.split('.')[0].split('/')[-1:][0])
