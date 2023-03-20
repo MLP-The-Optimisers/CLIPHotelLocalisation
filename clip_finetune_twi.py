@@ -84,7 +84,7 @@ class ImageTextDataset(Dataset):
 # Define the training function
 def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor):
     # Create the optimizer and scheduler
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-3)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     # Define the loss function
