@@ -199,7 +199,7 @@ val_dataset = ImageTextDataset(images_val, labels_val, processor)
 
 # Start training
 epochs = 10
-batch_size = 128
+batch_size = 256
 
 model = train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
 torch.save(model.state_dict(), f'saved_models_e{epochs}_bz{batch_size}_lr{5e-5}/model.pth')
