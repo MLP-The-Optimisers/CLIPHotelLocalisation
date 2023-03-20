@@ -174,10 +174,8 @@ images = glob.glob("data/images/*/*.jpg")
 print("read images: in format ", images[0])
 labels = []
 try:
-    0/0
     labels = load_object('.', 'labels')
     images = load_object('.', 'images')
-    print("this should have failed!")
 except:
     for path in track(images, description="Preparing dataset..."):
         img_id = parse_img_id(path)
@@ -193,7 +191,7 @@ except:
     save_object(labels, '.', 'labels')
 
 # Split dataset
-images_train, images_val, labels_train, labels_val = train_test_split(images, labels, test_size=0.33, random_state=42)
+images_train, images_val, labels_train, labels_val = train_test_split(images, labels, test_size=0.20, random_state=42)
 print(len(images_train))
 print(images_train[0])
 train_dataset = ImageTextDataset(images_train, labels_train, processor)
