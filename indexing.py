@@ -17,7 +17,7 @@ processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
 index = CLIPIndex()
 index.create_index("clip_index")
 
-image_paths = glob.glob('data/images/train/*.jpg', recursive=True)[0:100]
+image_paths = glob.glob('data/images/train/*.jpg', recursive=True)
 print(device)
 
 for image_path in track(image_paths, description="Processing..."):

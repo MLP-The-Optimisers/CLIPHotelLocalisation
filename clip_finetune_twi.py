@@ -10,6 +10,9 @@ from rich.progress import track
 from rich import print
 import pickle
 import wandb
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+torch.cuda.empty_cache()
+
 
 run = wandb.init(
     # set the wandb project where this run will be logged
@@ -20,8 +23,8 @@ run = wandb.init(
         "learning_rate": 5e-5,
         "architecture": "CNN",
         "dataset": "LocalTest-600K-660K",
-        "epochs": 32,
-        "batch_size": 256
+        "epochs": 10,
+        "batch_size": 64
     }
 )
 
@@ -67,6 +70,9 @@ class ImageTextDataset(Dataset):
         )
         input_ids = text_tokens["input_ids"].squeeze(0)
         attention_mask = text_tokens["attention_mask"].squeeze(0)
+        pixel_values = pixel_values.to(device)
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
 
         return (pixel_values, input_ids, attention_mask)
 
@@ -95,7 +101,7 @@ def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
 
             # Unpack the inputs and labels from the data loader
             pixel_values, input_ids, attention_mask = batch
-            labels = torch.arange(len(images)).long()
+            labels = torch.arange(len(images)).long().to(device)
 
             # Forward pass
             outputs = model(
@@ -108,6 +114,7 @@ def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
             wandb.log({"loss": loss, "it": i + epoch})
             loss.backward()
             optimizer.step()
+        wandb.log({"epoch": epoch})
 
         # Evaluate the model on the validation set
         model.eval()
@@ -133,8 +140,16 @@ def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
                 total_samples += len(labels)
                 accuracy = total_correct / total_samples
 
+                wandb.log({
+                    "val": {
+                        "acc": accuracy,
+                        "epoch": epoch + 1/epochs
+                    }
+                })
+
                 print(f"Epoch {epoch + 1}/{epochs}: validation accuracy = {accuracy}")
 
+        torch.cuda.empty_cache()
         # Update the learning rate scheduler
         scheduler.step()
 
@@ -142,6 +157,7 @@ def train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
 
 
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+model = model.to(device)
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
 # Load dataset DataFrames from Hotels50K
@@ -152,14 +168,22 @@ df_chains = pd.read_csv("data/input/dataset/chain_info.csv")
 parse_img_id = lambda x: int(x.split('.')[0].split('/')[-1:][0])
 
 # Build dataset split with chain labels
-images = glob.glob("data/images-test/train/*.jpg")
+images = glob.glob("data/images/*/*.jpg")
 labels = []
+clean_images = []
 
 try:
     labels = load_object('.', 'labels')
-    images = load_object('.', 'images')
+    clean_images = load_object('.', 'images')
 except:
     for path in track(images, description="Preparing dataset..."):
+        clean_images.append(path)
+        # try:
+        #     Image.open(path).convert("RGB")
+        #     clean_images.append(path)
+        # except:
+        #     continue
+        
         img_id = parse_img_id(path)
 
         hotel_id = df_train.loc[df_train['image_id'] == img_id]['hotel_id'].iloc[0]
@@ -169,18 +193,18 @@ except:
         labels.append(chain_name)
 
     # Cache as Pickle files to be loaded for another run
-    save_object(images, '.', 'images')
+    save_object(clean_images, '.', 'images')
     save_object(labels, '.', 'labels')
 
 # Split dataset
-images_train, images_val, labels_train, labels_val = train_test_split(images, labels, test_size=0.33, random_state=42)
-
+images_train, images_val, labels_train, labels_val = train_test_split(clean_images, labels, test_size=0.20, random_state=42)
+print(len(images_train))
 train_dataset = ImageTextDataset(images_train, labels_train, processor)
 val_dataset = ImageTextDataset(images_val, labels_val, processor)
 
 # Start training
-epochs = 32
-batch_size = 256
+epochs = 10
+batch_size = 128
 
 model = train_clip(epochs, batch_size, train_dataset, val_dataset, model, processor)
 torch.save(model.state_dict(), f'saved_models_e{epochs}_bz{batch_size}_lr{5e-5}/model.pth')
