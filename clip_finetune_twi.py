@@ -173,22 +173,11 @@ parse_img_id = lambda x: int(x.split('.')[0].split('/')[-1:][0])
 images = glob.glob("data/images/*/*.jpg")
 print("read images: in format ", images[0])
 labels = []
-clean_images = []
-
 try:
     labels = load_object('.', 'labels')
-    clean_images = load_object('.', 'images')
-    print("successfully loaded clean images in format: ", clean_images[0])
+    images = load_object('.', 'images')
 except:
-    print("could not load objects so have to prepare the dataset now")
     for path in track(images, description="Preparing dataset..."):
-        clean_images.append(path)
-        # try:
-        #     Image.open(path).convert("RGB")
-        #     clean_images.append(path)
-        # except:
-        #     continue
-        
         img_id = parse_img_id(path)
 
         hotel_id = df_train.loc[df_train['image_id'] == img_id]['hotel_id'].iloc[0]
@@ -198,11 +187,11 @@ except:
         labels.append(chain_name)
 
     # Cache as Pickle files to be loaded for another run
-    save_object(clean_images, '.', 'images')
+    save_object(images, '.', 'images')
     save_object(labels, '.', 'labels')
 
 # Split dataset
-images_train, images_val, labels_train, labels_val = train_test_split(clean_images, labels, test_size=0.20, random_state=42)
+images_train, images_val, labels_train, labels_val = train_test_split(images, labels, test_size=0.33, random_state=42)
 print(len(images_train))
 train_dataset = ImageTextDataset(images_train, labels_train, processor)
 val_dataset = ImageTextDataset(images_val, labels_val, processor)
