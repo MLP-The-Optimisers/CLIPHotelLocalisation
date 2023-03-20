@@ -174,8 +174,10 @@ images = glob.glob("data/images/*/*.jpg")
 print("read images: in format ", images[0])
 labels = []
 try:
+    0/0
     labels = load_object('.', 'labels')
     images = load_object('.', 'images')
+    print("this should have failed!")
 except:
     for path in track(images, description="Preparing dataset..."):
         img_id = parse_img_id(path)
