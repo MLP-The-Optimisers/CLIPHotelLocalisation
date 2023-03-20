@@ -193,6 +193,7 @@ except:
 # Split dataset
 images_train, images_val, labels_train, labels_val = train_test_split(images, labels, test_size=0.33, random_state=42)
 print(len(images_train))
+print(images_train[0])
 train_dataset = ImageTextDataset(images_train, labels_train, processor)
 val_dataset = ImageTextDataset(images_val, labels_val, processor)
 
