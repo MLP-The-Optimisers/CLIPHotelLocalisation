@@ -145,7 +145,7 @@ def train_clip(
         model.eval() # Sets model into val mode, thus no grads
         fn_val(model, val_loader)
 
-        model_name = f'clip_epochs{args.epoch}_bz{args.batch_size}_lr{args.batch_size}'
+        model_name = f'clip_epochs{epoch}_bz{args.batch_size}_lr{args.batch_size}'
         model.save_pretrained(f'{MODEL_REPO}/{model_name}')
 
         torch.cuda.empty_cache()
