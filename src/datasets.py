@@ -1,15 +1,13 @@
 from torch.utils.data import Dataset
 from PIL import Image
 
-
-# Define the dataset class for loading image-text pairs
 class ImageTextDataset(Dataset):
     def __init__(self, image_paths, texts, processor, device):
         self.image_paths = image_paths
         self.texts = texts
         self.processor = processor
-
         self.device = device
+        self.label_to_id = {label: i for i, label in enumerate(sorted(set(texts)))}
 
     def __getitem__(self, index):
         image_path = self.image_paths[index]
@@ -37,7 +35,9 @@ class ImageTextDataset(Dataset):
         input_ids = input_ids.to(self.device)
         attention_mask = attention_mask.to(self.device)
 
-        return (pixel_values, input_ids, attention_mask)
+        label = torch.tensor(self.label_to_id[text]).to(self.device)
+
+        return (pixel_values, input_ids, attention_mask, label)
 
     def __len__(self):
         return len(self.image_paths)

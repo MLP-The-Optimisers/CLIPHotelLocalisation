@@ -63,7 +63,7 @@ def fn_train(
         optimizer.zero_grad()
         train_total += 1 
         # Unpack the inputs and labels from the data loader
-        pixel_values, input_ids, attention_mask = batch
+        pixel_values, input_ids, attention_mask, labels = batch
 
         # Forward pass
         outputs = model(
@@ -78,7 +78,7 @@ def fn_train(
         # Calculate accuracy
         logits = outputs.logits_per_image
         predictions = torch.argmax(logits, dim=1)
-        train_correct += (predictions == input_ids).sum().item()
+        train_correct += (predictions == labels).sum().item()
 
         loss.backward()
         optimizer.step()
@@ -99,7 +99,7 @@ def fn_val(
         for batch in val_loader:
             val_total += 1
             # Unpack the inputs and labels from the data loader
-            pixel_values, input_ids, attention_mask = batch
+            pixel_values, input_ids, attention_mask, labels = batch
 
             # Forward pass
             outputs = model(
@@ -114,7 +114,7 @@ def fn_val(
             # Calculate accuracy
             logits = outputs.logits_per_image
             predictions = torch.argmax(logits, dim=1)
-            val_correct += (predictions == input_ids).sum().item()
+            val_correct += (predictions == labels).sum().item()
     
     mean_val_loss = val_loss / val_total
     val_accuracy = val_correct / len(val_loader.dataset)
