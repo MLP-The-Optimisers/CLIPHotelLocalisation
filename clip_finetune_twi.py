@@ -57,7 +57,7 @@ def fn_train(
         train_loader: DataLoader
 ):
     
-    train_total, train_loss = 0, 0
+    train_total, train_loss, train_correct = 0, 0, 0
 
     for batch in train_loader:
         optimizer.zero_grad()
@@ -75,11 +75,17 @@ def fn_train(
         loss = outputs.loss
         train_loss += loss
 
+        # Calculate accuracy
+        logits = outputs.logits_per_image
+        predictions = torch.argmax(logits, dim=1)
+        train_correct += (predictions == input_ids).sum().item()
+
         loss.backward()
         optimizer.step()
     
     mean_batch_loss = train_loss / train_total
-    wandb.log({"train": {"loss": mean_batch_loss}, "epoch": epoch})
+    train_accuracy = train_correct / len(train_loader.dataset)
+    wandb.log({"train": {"loss": mean_batch_loss, "accuracy": train_accuracy}, "epoch": epoch})
 
 
 def fn_val(
@@ -87,7 +93,7 @@ def fn_val(
         val_loader: DataLoader
 ):
 
-    val_total, val_loss = 0, 0
+    val_total, val_loss, val_correct = 0, 0, 0
 
     with torch.no_grad():
         for batch in val_loader:
@@ -104,9 +110,15 @@ def fn_val(
             
             loss = outputs.loss
             val_loss += loss
+
+            # Calculate accuracy
+            logits = outputs.logits_per_image
+            predictions = torch.argmax(logits, dim=1)
+            val_correct += (predictions == input_ids).sum().item()
     
     mean_val_loss = val_loss / val_total
-    wandb.log({"val": {"loss": mean_val_loss}})
+    val_accuracy = val_correct / len(val_loader.dataset)
+    wandb.log({"val": {"loss": mean_val_loss, "accuracy": val_accuracy}})
     
 
 # Define the training function
