@@ -1,5 +1,6 @@
 from torch.utils.data import Dataset
 from PIL import Image
+import torch
 
 class ImageTextDataset(Dataset):
     def __init__(self, image_paths, texts, processor, device):
