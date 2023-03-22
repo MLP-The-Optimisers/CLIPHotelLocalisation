@@ -8,9 +8,12 @@ from typing import List
 from torch import Tensor
 import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+import json
+from rich.progress import track
 
 # Local imports
 from clip_index import CLIPIndex
+from utils.pickle_handler import save_object, load_object
 
 
 class Eval():
@@ -19,7 +22,7 @@ class Eval():
         self.index = CLIPIndex()
         self.index.load(index_name)
 
-        self.model = CLIPVisionModelWithProjection.from_pretrained("./clip_trained")
+        self.model = CLIPVisionModelWithProjection.from_pretrained("./clip_epochs1_bz364_lr364")
         self.model.to(device)
         self.processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -45,65 +48,73 @@ class Eval():
 
         return outputs.image_embeds
 
+    def build_test_latents(self, test_repo: str):
+        latents = []
+
+        for image_path in track(self._list_test_images(test_repo), description=f"Processing latents..."):
+            latents.append((self._parse_img_id(image_path), self._img_to_latent(image_path)))
+        
+        save_object(latents, 'test_latents', 'latents')
 
     def top_k_acc_instance(self, ks: List, test_repo: str) -> float:
-        results = {}
+        results = {f'top-{k}': 0 for k in ks}
+        max_k = max(ks)
+        test_latents = load_object('test_latents', 'latents')[0:1000]
 
+        for gold_id, gold_latent in track(test_latents, description=f"processing up to top {max_k} instance"):
+            _, ids = self.index.search_cosine(gold_latent, top_k=max_k)
+            gold_hotel_id = self.df_train.loc[
+                self.df_train['image_id'] == gold_id]['hotel_id'].iloc[0]
+
+            for idx, i in enumerate(ids[0]):
+                hotel_id = self.df_train.loc[self.df_train['image_id'] == i]['hotel_id'].iloc[0]
+                if hotel_id == gold_hotel_id:
+                    for k in ks:
+                        if idx < k:
+                            results[f'top-{k}'] += 1
+                    break
+
+        total = len(test_latents)
         for k in ks:
-            accuracies = []
+            results[f'top-{k}'] /= total
 
-            for image_path in self._list_test_images(test_repo)[0:100]:
-                gold_id = self._parse_img_id(image_path)
-                gold_latent = self._img_to_latent(image_path)
-
-                _, ids = self.index.search_cosine(gold_latent, top_k=k)
-                gold_hotel_id = self.df_train.loc[
-                    self.df_train['image_id'] == gold_id]['hotel_id'].iloc[0]
-
-                n_correct = 0
-                for i in ids[0]:
-                    hotel_id = self.df_train.loc[self.df_train['image_id'] == i]['hotel_id'].iloc[0]
-                    if hotel_id == gold_hotel_id:
-                        n_correct = 1
-                        break
-
-                accuracies.append(n_correct)
-
-            results[f'top-{k}'] = sum(accuracies) / len(accuracies)
+        with open('top-k-instances.json', 'w') as fp:
+            json.dump(results, fp, indent=4)
 
         return results
 
 
+
     def top_k_acc_chain(self, ks: List, test_repo: str) -> float:
-        results = {}
+        results = {f'top-{k}': 0 for k in ks}
+        max_k = max(ks)
+        test_latents = load_object('test_latents', 'latents')[0:1000]
 
+        for gold_id, gold_latent in track(test_latents, description=f"processing up to top {max_k} chain"):
+            _, ids = self.index.search_cosine(gold_latent, top_k=max_k)
+            gold_hotel_id = self.df_train.loc[
+                self.df_train['image_id'] == gold_id]['hotel_id'].iloc[0]
+            gold_chain_id = self.df_hotels.loc[
+                self.df_hotels['hotel_id'] == gold_hotel_id]['chain_id'].iloc[0]
+
+            for idx, i in enumerate(ids[0]):
+                hotel_id = self.df_train.loc[
+                    self.df_train['image_id'] == i]['hotel_id'].iloc[0]
+                chain_id = self.df_hotels.loc[
+                    self.df_hotels['hotel_id'] == hotel_id]['chain_id'].iloc[0]
+
+                if chain_id == gold_chain_id:
+                    for k in ks:
+                        if idx < k:
+                            results[f'top-{k}'] += 1
+                    break
+
+        total = len(test_latents)
         for k in ks:
-            accuracies = []
+            results[f'top-{k}'] /= total
 
-            for image_path in self._list_test_images(test_repo)[0:100]:
-                gold_id = self._parse_img_id(image_path)
-                gold_latent = self._img_to_latent(image_path)
-
-                _, ids = self.index.search_cosine(gold_latent, top_k=k)
-                gold_hotel_id = self.df_train.loc[
-                    self.df_train['image_id'] == gold_id]['hotel_id'].iloc[0]
-                gold_chain_id = self.df_hotels.loc[
-                    self.df_hotels['hotel_id'] == gold_hotel_id]['chain_id'].iloc[0]
-
-                n_correct = 0
-                for i in ids[0]:
-                    hotel_id = self.df_train.loc[
-                        self.df_train['image_id'] == i]['hotel_id'].iloc[0]
-                    chain_id = self.df_hotels.loc[
-                        self.df_hotels['hotel_id'] == hotel_id]['chain_id'].iloc[0]
-
-                    if chain_id == gold_chain_id:
-                        n_correct = 1
-                        break
-
-                accuracies.append(n_correct)
-
-            results[f'top-{k}'] = sum(accuracies) / len(accuracies)
+        with open('top-k-chains.json', 'w') as fp:
+            json.dump(results, fp, indent=4)
 
         return results
 
@@ -111,6 +122,7 @@ class Eval():
 
 if __name__ == '__main__':
     evaluation = Eval('clip_index')
+    # evaluation.build_test_latents('data/images/test/*.jpg')
     print("HOTEL CHAIN")
     print(evaluation.top_k_acc_chain([1, 3, 5], 'data/images/test/*.jpg'))
     print()
