@@ -190,7 +190,7 @@ def load_dataset_pairs():
         df_hotels = pd.read_csv("data/input/dataset/hotel_info.csv")
         df_chains = pd.read_csv("data/input/dataset/chain_info.csv")
 
-        images = glob.glob("data/images/*/*.jpg")
+        images = glob.glob("data/images/train/*.jpg")
         labels = []
 
         for path in track(images, description="Preparing dataset..."):

@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 # Local imports
-from .utils.config import LATENT_DIMENSIONS
+from utils.config import LATENT_DIMENSIONS
 
 
 class CLIPIndex():

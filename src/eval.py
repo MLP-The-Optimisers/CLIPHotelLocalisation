@@ -10,7 +10,7 @@ import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Local imports
-from src.clip_index import CLIPIndex
+from clip_index import CLIPIndex
 
 
 class Eval():
@@ -19,7 +19,7 @@ class Eval():
         self.index = CLIPIndex()
         self.index.load(index_name)
 
-        self.model = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch32")
+        self.model = CLIPVisionModelWithProjection.from_pretrained("./clip_trained")
         self.model.to(device)
         self.processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -52,7 +52,7 @@ class Eval():
         for k in ks:
             accuracies = []
 
-            for image_path in self._list_test_images(test_repo)[0:]:
+            for image_path in self._list_test_images(test_repo)[0:100]:
                 gold_id = self._parse_img_id(image_path)
                 gold_latent = self._img_to_latent(image_path)
 
@@ -80,7 +80,7 @@ class Eval():
         for k in ks:
             accuracies = []
 
-            for image_path in self._list_test_images(test_repo)[0:]:
+            for image_path in self._list_test_images(test_repo)[0:100]:
                 gold_id = self._parse_img_id(image_path)
                 gold_latent = self._img_to_latent(image_path)
 

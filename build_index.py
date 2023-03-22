@@ -10,7 +10,7 @@ import torch
 from src.clip_index import CLIPIndex
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-model = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch32")
+model = CLIPVisionModelWithProjection.from_pretrained("./clip_trained")
 model.to(device)
 processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
