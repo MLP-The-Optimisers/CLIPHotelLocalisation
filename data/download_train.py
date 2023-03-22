@@ -70,18 +70,20 @@ def download_and_resize_into_same_dir(imList):
                 print('Good: ' + savePath)
             else:
                 print('Already saved: ' + savePath)
+                # pass
         except:
             print('Bad: ' + savePath)
+            # pass
 
 def main(start, end):
-    hotel_f = open('./input/dataset/hotel_info.csv','r')
+    hotel_f = open('./input/dataset/hotel_info.csv','r', encoding="utf-8")
     hotel_reader = csv.reader(hotel_f)
     hotel_headers = next(hotel_reader,None)
     hotel_to_chain = {}
     for row in hotel_reader:
         hotel_to_chain[row[0]] = row[2]
 
-    train_f = open('./input/dataset/train_set.csv','r')
+    train_f = open('./input/dataset/train_set.csv','r', encoding="utf-8")
     train_reader = csv.reader(train_f)
     train_headers = next(train_reader,None)
 
